@@ -3,6 +3,7 @@ package app.csb.yrkqw2;
 import android.content.Intent;
 import android.os.Bundle;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -114,7 +115,22 @@ public class DashboardActivity extends AppCompatActivity implements BoardAdapter
                     }).start();
                 },
                 error -> {
-                    Toast.makeText(DashboardActivity.this, "Failed to fetch boards", Toast.LENGTH_SHORT).show();
+                    String message = "Failed to fetch boards: Unknown error";
+                    if (error.networkResponse != null) {
+                        message = "Failed to fetch boards: HTTP Status " + error.networkResponse.statusCode;
+                        if (error.networkResponse.data != null) {
+                            try {
+                                JSONObject errorJson = new JSONObject(new String(error.networkResponse.data));
+                                message += " - " + errorJson.optString("message", "No detailed message");
+                            } catch (JSONException e) {
+                                e.printStackTrace();
+                                message += " - Error parsing error response";
+                            }
+                        }
+                    } else if (error.getMessage() != null) {
+                        message = "Failed to fetch boards: " + error.getMessage();
+                    }
+                    Toast.makeText(DashboardActivity.this, message, Toast.LENGTH_LONG).show();
                     loadBoardsFromLocal();
                 }) {
             @Override
@@ -132,8 +148,8 @@ public class DashboardActivity extends AppCompatActivity implements BoardAdapter
     private void showAddBoardDialog() {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("Add New Board");
-        final TextView input = new TextView(this);
-        input.setText("");
+        final EditText input = new EditText(this);
+        input.setHint("Enter board title");
         builder.setView(input);
 
         builder.setPositiveButton("Add", (dialog, which) -> {
@@ -154,6 +170,8 @@ public class DashboardActivity extends AppCompatActivity implements BoardAdapter
             JSONObject boardData = new JSONObject();
             try {
                 boardData.put("title", title);
+                // Log the request data for debugging
+                Toast.makeText(DashboardActivity.this, "Sending request: " + boardData.toString(), Toast.LENGTH_LONG).show();
             } catch (JSONException e) {
                 e.printStackTrace();
                 Toast.makeText(this, "Error creating request", Toast.LENGTH_SHORT).show();
@@ -177,7 +195,22 @@ public class DashboardActivity extends AppCompatActivity implements BoardAdapter
                         }
                     },
                     error -> {
-                        Toast.makeText(DashboardActivity.this, "Failed to add board", Toast.LENGTH_SHORT).show();
+                        String message = "Failed to add board: Unknown error";
+                        if (error.networkResponse != null) {
+                            message = "Failed to add board: HTTP Status " + error.networkResponse.statusCode;
+                            if (error.networkResponse.data != null) {
+                                try {
+                                    JSONObject errorJson = new JSONObject(new String(error.networkResponse.data));
+                                    message += " - " + errorJson.optString("message", "No detailed message");
+                                } catch (JSONException e) {
+                                    e.printStackTrace();
+                                    message += " - Error parsing error response";
+                                }
+                            }
+                        } else if (error.getMessage() != null) {
+                            message = "Failed to add board: " + error.getMessage();
+                        }
+                        Toast.makeText(DashboardActivity.this, message, Toast.LENGTH_LONG).show();
                     }) {
                 @Override
                 public Map<String, String> getHeaders() throws AuthFailureError {
