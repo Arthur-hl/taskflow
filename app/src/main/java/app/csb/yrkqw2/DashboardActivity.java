@@ -62,6 +62,16 @@ public class DashboardActivity extends AppCompatActivity implements BoardAdapter
         loadBoards();
 
         addBoardButton.setOnClickListener(v -> showAddBoardDialog());
+
+        // Add back button
+        findViewById(R.id.backButton).setOnClickListener(v -> finish());
+
+        // Add logout button
+        findViewById(R.id.logoutButton).setOnClickListener(v -> {
+            AuthManager.getInstance(this).logout();
+            startActivity(new android.content.Intent(this, MainActivity.class));
+            finish();
+        });
     }
 
     private void checkNetworkStatus() {
@@ -167,10 +177,27 @@ public class DashboardActivity extends AppCompatActivity implements BoardAdapter
 
     private void addBoard(String title) {
         if (NetworkUtils.isNetworkAvailable(this)) {
+            String token = AuthManager.getInstance(DashboardActivity.this).getToken();
+            if (token == null || token.isEmpty()) {
+                Toast.makeText(DashboardActivity.this, "Token missing or expired. Please login again.", Toast.LENGTH_LONG).show();
+                // Redirect to login
+                startActivity(new android.content.Intent(DashboardActivity.this, MainActivity.class));
+                finish();
+                return;
+            }
+            Toast.makeText(DashboardActivity.this, "Using token: " + token, Toast.LENGTH_LONG).show();
+
+            // Add board locally immediately with temporary negative ID
+            BoardEntity tempBoard = new BoardEntity();
+            tempBoard.id = -System.currentTimeMillis() > Integer.MAX_VALUE ? (int)(-System.currentTimeMillis() % Integer.MAX_VALUE) : (int)-System.currentTimeMillis();
+            tempBoard.title = title;
+            tempBoard.createdAt = new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'").format(new java.util.Date());
+            boardList.add(tempBoard);
+            boardAdapter.notifyDataSetChanged();
+
             JSONObject boardData = new JSONObject();
             try {
                 boardData.put("title", title);
-                // Log the request data for debugging
                 Toast.makeText(DashboardActivity.this, "Sending request: " + boardData.toString(), Toast.LENGTH_LONG).show();
             } catch (JSONException e) {
                 e.printStackTrace();
@@ -185,10 +212,16 @@ public class DashboardActivity extends AppCompatActivity implements BoardAdapter
                             board.id = response.getInt("id");
                             board.title = response.getString("title");
                             board.createdAt = response.getString("createdAt");
-                            new Thread(() -> db.boardDao().insertBoard(board)).start();
-                            boardList.add(board);
-                            boardAdapter.notifyDataSetChanged();
-                            Toast.makeText(DashboardActivity.this, "Board added", Toast.LENGTH_SHORT).show();
+                            new Thread(() -> {
+                                db.boardDao().insertBoard(board);
+                                // Remove temp board and add updated board
+                                runOnUiThread(() -> {
+                                    boardList.remove(tempBoard);
+                                    boardList.add(board);
+                                    boardAdapter.notifyDataSetChanged();
+                                    Toast.makeText(DashboardActivity.this, "Board added", Toast.LENGTH_SHORT).show();
+                                });
+                            }).start();
                         } catch (JSONException e) {
                             e.printStackTrace();
                             Toast.makeText(DashboardActivity.this, "Error parsing response", Toast.LENGTH_SHORT).show();
@@ -207,15 +240,21 @@ public class DashboardActivity extends AppCompatActivity implements BoardAdapter
                                     message += " - Error parsing error response";
                                 }
                             }
+                            if (error.networkResponse.statusCode == 401 || error.networkResponse.statusCode == 403) {
+                                Toast.makeText(DashboardActivity.this, "Authentication error. Please login again.", Toast.LENGTH_LONG).show();
+                                startActivity(new android.content.Intent(DashboardActivity.this, MainActivity.class));
+                                finish();
+                                return;
+                            }
                         } else if (error.getMessage() != null) {
                             message = "Failed to add board: " + error.getMessage();
                         }
                         Toast.makeText(DashboardActivity.this, message, Toast.LENGTH_LONG).show();
+                        // Keep temp board visible on error
                     }) {
                 @Override
                 public Map<String, String> getHeaders() throws AuthFailureError {
                     Map<String, String> headers = new HashMap<>();
-                    String token = AuthManager.getInstance(DashboardActivity.this).getToken();
                     headers.put("Authorization", "Bearer " + token);
                     return headers;
                 }

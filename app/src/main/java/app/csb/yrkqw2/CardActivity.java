@@ -77,6 +77,16 @@ public class CardActivity extends AppCompatActivity implements CardAdapter.OnCar
         loadCards();
 
         addCardButton.setOnClickListener(v -> showAddCardDialog());
+
+        // Add back button
+        findViewById(R.id.backButton).setOnClickListener(v -> finish());
+
+        // Add logout button
+        findViewById(R.id.logoutButton).setOnClickListener(v -> {
+            AuthManager.getInstance(this).logout();
+            startActivity(new android.content.Intent(this, MainActivity.class));
+            finish();
+        });
     }
 
     private void checkNetworkStatus() {
@@ -153,12 +163,15 @@ public class CardActivity extends AppCompatActivity implements CardAdapter.OnCar
     private void showAddCardDialog() {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("Add New Card");
-        final TextView titleInput = new TextView(this);
-        titleInput.setText("");
-        final TextView descInput = new TextView(this);
-        descInput.setText("");
-        builder.setView(titleInput);
-        builder.setView(descInput);
+        final android.widget.EditText titleInput = new android.widget.EditText(this);
+        titleInput.setHint("Enter card title");
+        final android.widget.EditText descInput = new android.widget.EditText(this);
+        descInput.setHint("Enter card description");
+        android.widget.LinearLayout layout = new android.widget.LinearLayout(this);
+        layout.setOrientation(android.widget.LinearLayout.VERTICAL);
+        layout.addView(titleInput);
+        layout.addView(descInput);
+        builder.setView(layout);
 
         builder.setPositiveButton("Add", (dialog, which) -> {
             String title = titleInput.getText().toString().trim();
@@ -176,6 +189,24 @@ public class CardActivity extends AppCompatActivity implements CardAdapter.OnCar
 
     private void addCard(String title, String description) {
         if (NetworkUtils.isNetworkAvailable(this)) {
+            String token = AuthManager.getInstance(CardActivity.this).getToken();
+            if (token == null || token.isEmpty()) {
+                Toast.makeText(CardActivity.this, "Token missing or expired. Please login again.", Toast.LENGTH_LONG).show();
+                startActivity(new android.content.Intent(CardActivity.this, MainActivity.class));
+                finish();
+                return;
+            }
+
+            // Add card locally immediately with temporary negative ID
+            CardEntity tempCard = new CardEntity();
+            tempCard.id = -System.currentTimeMillis() > Integer.MAX_VALUE ? (int)(-System.currentTimeMillis() % Integer.MAX_VALUE) : (int)-System.currentTimeMillis();
+            tempCard.listId = listId;
+            tempCard.title = title;
+            tempCard.description = description;
+            tempCard.createdAt = new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'").format(new java.util.Date());
+            cardList.add(tempCard);
+            cardAdapter.notifyDataSetChanged();
+
             JSONObject cardData = new JSONObject();
             try {
                 cardData.put("title", title);
@@ -183,6 +214,7 @@ public class CardActivity extends AppCompatActivity implements CardAdapter.OnCar
                     cardData.put("description", description);
                 }
                 cardData.put("listId", listId);
+                Toast.makeText(CardActivity.this, "Sending request: " + cardData.toString(), Toast.LENGTH_LONG).show();
             } catch (JSONException e) {
                 e.printStackTrace();
                 Toast.makeText(this, "Error creating request", Toast.LENGTH_SHORT).show();
@@ -200,10 +232,15 @@ public class CardActivity extends AppCompatActivity implements CardAdapter.OnCar
                                 card.description = response.getString("description");
                             }
                             card.createdAt = response.getString("createdAt");
-                            new Thread(() -> db.cardDao().insertCard(card)).start();
-                            cardList.add(card);
-                            cardAdapter.notifyDataSetChanged();
-                            Toast.makeText(CardActivity.this, "Card added", Toast.LENGTH_SHORT).show();
+                            new Thread(() -> {
+                                db.cardDao().insertCard(card);
+                                runOnUiThread(() -> {
+                                    cardList.remove(tempCard);
+                                    cardList.add(card);
+                                    cardAdapter.notifyDataSetChanged();
+                                    Toast.makeText(CardActivity.this, "Card added", Toast.LENGTH_SHORT).show();
+                                });
+                            }).start();
                         } catch (JSONException e) {
                             e.printStackTrace();
                             Toast.makeText(CardActivity.this, "Error parsing response", Toast.LENGTH_SHORT).show();
@@ -211,11 +248,11 @@ public class CardActivity extends AppCompatActivity implements CardAdapter.OnCar
                     },
                     error -> {
                         Toast.makeText(CardActivity.this, "Failed to add card", Toast.LENGTH_SHORT).show();
+                        // Keep temp card visible on error
                     }) {
                 @Override
                 public Map<String, String> getHeaders() throws AuthFailureError {
                     Map<String, String> headers = new HashMap<>();
-                    String token = AuthManager.getInstance(CardActivity.this).getToken();
                     headers.put("Authorization", "Bearer " + token);
                     return headers;
                 }

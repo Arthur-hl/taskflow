@@ -27,7 +27,7 @@ public class MainActivity extends AppCompatActivity {
     private TextView registerLink;
     private TextView offlineIndicator;
     private RequestQueue requestQueue;
-    private static final String API_URL = "https://yrkqw2-5000.csb.app/api/auth/login";
+    private static final String API_URL = "https://yrkqw2-5000.csb.app/api/";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -55,6 +55,9 @@ public class MainActivity extends AppCompatActivity {
         registerLink.setOnClickListener(v -> {
             startActivity(new Intent(MainActivity.this, RegisterActivity.class));
         });
+
+        // Add logout button (hidden in login screen, but for consistency)
+        // Add back button (not needed in login screen)
     }
 
     private void checkNetworkStatus() {
