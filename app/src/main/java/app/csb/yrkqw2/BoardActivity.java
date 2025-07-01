@@ -150,8 +150,8 @@ public class BoardActivity extends AppCompatActivity implements ListAdapter.OnLi
     private void showAddListDialog() {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("Add New List");
-        final TextView input = new TextView(this);
-        input.setText("");
+        final android.widget.EditText input = new android.widget.EditText(this);
+        input.setHint("Enter list title");
         builder.setView(input);
 
         builder.setPositiveButton("Add", (dialog, which) -> {
@@ -169,10 +169,28 @@ public class BoardActivity extends AppCompatActivity implements ListAdapter.OnLi
 
     private void addList(String title) {
         if (NetworkUtils.isNetworkAvailable(this)) {
+            String token = AuthManager.getInstance(BoardActivity.this).getToken();
+            if (token == null || token.isEmpty()) {
+                Toast.makeText(BoardActivity.this, "Token missing or expired. Please login again.", Toast.LENGTH_LONG).show();
+                startActivity(new android.content.Intent(BoardActivity.this, MainActivity.class));
+                finish();
+                return;
+            }
+
+            // Add list locally immediately with temporary negative ID
+            ListEntity tempList = new ListEntity();
+            tempList.id = -System.currentTimeMillis() > Integer.MAX_VALUE ? (int)(-System.currentTimeMillis() % Integer.MAX_VALUE) : (int)-System.currentTimeMillis();
+            tempList.boardId = boardId;
+            tempList.title = title;
+            tempList.createdAt = new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'").format(new java.util.Date());
+            listItems.add(tempList);
+            listAdapter.notifyDataSetChanged();
+
             JSONObject listData = new JSONObject();
             try {
                 listData.put("title", title);
                 listData.put("boardId", boardId);
+                Toast.makeText(BoardActivity.this, "Sending request: " + listData.toString(), Toast.LENGTH_LONG).show();
             } catch (JSONException e) {
                 e.printStackTrace();
                 Toast.makeText(this, "Error creating request", Toast.LENGTH_SHORT).show();
@@ -187,10 +205,15 @@ public class BoardActivity extends AppCompatActivity implements ListAdapter.OnLi
                             list.boardId = response.getInt("boardId");
                             list.title = response.getString("title");
                             list.createdAt = response.getString("createdAt");
-                            new Thread(() -> db.listDao().insertList(list)).start();
-                            listItems.add(list);
-                            listAdapter.notifyDataSetChanged();
-                            Toast.makeText(BoardActivity.this, "List added", Toast.LENGTH_SHORT).show();
+                            new Thread(() -> {
+                                db.listDao().insertList(list);
+                                runOnUiThread(() -> {
+                                    listItems.remove(tempList);
+                                    listItems.add(list);
+                                    listAdapter.notifyDataSetChanged();
+                                    Toast.makeText(BoardActivity.this, "List added", Toast.LENGTH_SHORT).show();
+                                });
+                            }).start();
                         } catch (JSONException e) {
                             e.printStackTrace();
                             Toast.makeText(BoardActivity.this, "Error parsing response", Toast.LENGTH_SHORT).show();
@@ -198,11 +221,11 @@ public class BoardActivity extends AppCompatActivity implements ListAdapter.OnLi
                     },
                     error -> {
                         Toast.makeText(BoardActivity.this, "Failed to add list", Toast.LENGTH_SHORT).show();
+                        // Keep temp list visible on error
                     }) {
                 @Override
                 public Map<String, String> getHeaders() throws AuthFailureError {
                     Map<String, String> headers = new HashMap<>();
-                    String token = AuthManager.getInstance(BoardActivity.this).getToken();
                     headers.put("Authorization", "Bearer " + token);
                     return headers;
                 }
