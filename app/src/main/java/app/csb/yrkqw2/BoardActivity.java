@@ -41,7 +41,7 @@ public class BoardActivity extends AppCompatActivity implements ListAdapter.OnLi
     private AppDatabase db;
     private int boardId;
     private String boardTitle;
-    private static final String API_URL = "https://yrkqw2-5000.csb.app/api/lists";
+    private static final String API_URL_BASE = "https://yrkqw2-5000.csb.app/api/lists/board/";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -104,7 +104,7 @@ public class BoardActivity extends AppCompatActivity implements ListAdapter.OnLi
     }
 
     private void fetchListsFromApi() {
-        String url = API_URL + "?boardId=" + boardId;
+        String url = API_URL_BASE + boardId + "/lists";
         JsonArrayRequest jsonArrayRequest = new JsonArrayRequest(Request.Method.GET, url, null,
                 response -> {
                     new Thread(() -> {
@@ -189,7 +189,6 @@ public class BoardActivity extends AppCompatActivity implements ListAdapter.OnLi
             JSONObject listData = new JSONObject();
             try {
                 listData.put("title", title);
-                listData.put("boardId", boardId);
                 Toast.makeText(BoardActivity.this, "Sending request: " + listData.toString(), Toast.LENGTH_LONG).show();
             } catch (JSONException e) {
                 e.printStackTrace();
@@ -197,7 +196,9 @@ public class BoardActivity extends AppCompatActivity implements ListAdapter.OnLi
                 return;
             }
 
-            JsonObjectRequest jsonObjectRequest = new JsonObjectRequest(Request.Method.POST, API_URL, listData,
+            String url = API_URL_BASE + boardId + "/lists";
+
+            JsonObjectRequest jsonObjectRequest = new JsonObjectRequest(Request.Method.POST, url, listData,
                     response -> {
                         try {
                             ListEntity list = new ListEntity();

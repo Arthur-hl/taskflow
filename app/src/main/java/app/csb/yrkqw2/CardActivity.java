@@ -77,6 +77,16 @@ public class CardActivity extends AppCompatActivity implements CardAdapter.OnCar
         loadCards();
 
         addCardButton.setOnClickListener(v -> showAddCardDialog());
+
+        // Add back button
+        findViewById(R.id.backButton).setOnClickListener(v -> finish());
+
+        // Add logout button
+        findViewById(R.id.logoutButton).setOnClickListener(v -> {
+            AuthManager.getInstance(this).logout();
+            startActivity(new android.content.Intent(this, MainActivity.class));
+            finish();
+        });
     }
 
     private void checkNetworkStatus() {
